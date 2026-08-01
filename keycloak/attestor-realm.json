@@ -1,0 +1,41 @@
+{
+  "realm": "attestor",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      { "name": "model_owner", "description": "First-line: registers models, responds to findings. Cannot close a finding." },
+      { "name": "validator", "description": "Second-line: runs validations, raises and closes findings. Cannot own a model." },
+      { "name": "mrm_head", "description": "Sets materiality thresholds and eval gates, approves tier overrides." },
+      { "name": "auditor", "description": "Read-only. Exam-ready export access. No write path." }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "attestor-api",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "secret": "attestor-api-local-dev-secret-change-in-prod",
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:8000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "attestor-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"]
+    }
+  ],
+  "users": []
+}
