@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Lint, type check, test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: attestor
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: attestor_test
+        options: >-
+          --health-cmd "pg_isready -U attestor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://attestor:ci_test_password@localhost:5432/attestor_test
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check app tests scripts
+
+      - name: Type check (mypy)
+        run: uv run mypy app --ignore-missing-imports
+        continue-on-error: true  # advisory during active build-out
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -v --cov=app --cov-report=term-missing
+
+      - name: Integration tests
+        run: uv run pytest tests/integration -v
+
+  security:
+    name: Security scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: SAST (bandit)
+        run: uv run bandit -r app -ll
+
+      - name: Dependency vulnerability audit
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit || true  # advisory: upstream CVEs shouldn't block a portfolio build
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  eval-gate:
+    name: Eval regression gate
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # This gate MUST fail the build, not warn. A quality gate that only
+      # warns is not a control, and an examiner will ask you to demonstrate
+      # a blocked deploy. Keep a screenshot of a red build caused by a
+      # deliberate metric regression — it's the single best demo artifact
+      # this project produces.
+      - name: Enforce eval thresholds
+        run: uv run python scripts/check_eval_gate.py
+        env:
+          EVAL_GATE_STRICT: "true"

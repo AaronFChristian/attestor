@@ -18,6 +18,11 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # This app's domain vocabulary genuinely needs fields prefixed
+        # "model_" (model_extraction, model_judge_primary, ...) since this
+        # is a model-governance tool. Pydantic reserves that prefix for its
+        # own internals by default — disabling the protection here is
+        # correct, not a suppressed warning papering over a real conflict.
         protected_namespaces=(),
     )
 

@@ -28,6 +28,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Identity,
     Index,
     String,
     Text,
@@ -297,7 +298,14 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    sequence_number: Mapped[int] = mapped_column(nullable=False, unique=True, autoincrement=True)
+    # Identity(), not autoincrement=True: this is a non-primary-key column,
+    # and SQLAlchemy's autoincrement flag only auto-populates the PK
+    # automatically. Identity() tells Postgres itself to generate the
+    # value, which is what actually makes inserts work — see migration
+    # 0002 for the incident this fixes.
+    sequence_number: Mapped[int] = mapped_column(
+        Identity(always=False), nullable=False, unique=True
+    )
     actor: Mapped[str] = mapped_column(String(255), nullable=False)  # user email or "system"
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)

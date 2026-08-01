@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-attestor_local_dev_only}
       POSTGRES_DB: attestor
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -93,6 +93,11 @@ services:
       KC_HOSTNAME: localhost
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      # As of Keycloak 26, health endpoints are OFF by default and live on
+      # a separate management interface (port 9000), not the main HTTP
+      # port. Both of these were missing before, which is the real reason
+      # the old healthcheck was hitting a route that didn't behave the way
+      # it assumed.
       KC_HEALTH_ENABLED: "true"
     ports:
       - "8080:8080"
@@ -103,6 +108,11 @@ services:
       keycloak-db:
         condition: service_healthy
     healthcheck:
+      # curl is not present in this image (verified by exec'ing in and
+      # checking) — bash is, and it's confirmed present since Keycloak's
+      # own startup scripts assume it. This exact command was run
+      # interactively against the live container and confirmed to return
+      # HTTP/1.1 200 OK with {"status":"UP"} before being wired in here.
       test: ["CMD-SHELL", "bash -c \"exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'\""]
       interval: 10s
       timeout: 5s

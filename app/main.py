@@ -6,7 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
-from app.routers import health, models
+from app.routers import evals, health, models
 
 settings = get_settings()
 
@@ -37,6 +37,7 @@ if settings.logfire_token:
 
 app.include_router(health.router)
 app.include_router(models.router)
+app.include_router(evals.router)
 
 
 @app.get("/")

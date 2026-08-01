@@ -1,0 +1,7 @@
+{
+  "tool_correctness": 0.8,
+  "schema_conformance": 0.95,
+  "citation_resolvability": 1.0,
+  "rubric_mean": 0.7,
+  "judge_agreement_rate": 0.75
+}
