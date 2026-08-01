@@ -136,6 +136,9 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - JUDGE_PROVIDER=${JUDGE_PROVIDER:-groq}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-attestor}
       - ENV=local
     ports:
       - "8000:8000"
@@ -164,6 +167,9 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - JUDGE_PROVIDER=${JUDGE_PROVIDER:-groq}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-attestor}
       - ENV=local
     volumes:
       - ./app:/app/app
@@ -173,6 +179,28 @@ services:
       redis:
         condition: service_healthy
     command: arq app.gateway.worker.WorkerSettings
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://attestor:${POSTGRES_PASSWORD:-attestor_local_dev_only}@postgres:5432/attestor
+    volumes:
+      - ./app/core:/app/app/core
+      - ./app/models:/app/app/models
+      - ./mcp_server:/app/mcp_server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No exposed port by default: FastMCP here runs over stdio for local
+    # Claude Desktop / Claude Code integration, not as a network service.
+    # If you want it reachable over HTTP for a remote MCP client instead,
+    # that's a real config change (fastmcp.run(transport="http", ...)) —
+    # not just adding a ports: entry, since stdio and HTTP transports are
+    # started differently.
+    stdin_open: true
+    tty: true
 
 volumes:
   pg_data:

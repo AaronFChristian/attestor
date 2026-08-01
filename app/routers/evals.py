@@ -14,7 +14,7 @@ import uuid
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +47,8 @@ class EvalTriggerRequest(BaseModel):
 
 
 class EvalRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
     id: uuid.UUID
     model_id: uuid.UUID
     evidence_id: uuid.UUID
@@ -54,9 +56,6 @@ class EvalRunResponse(BaseModel):
     prompt_hash: str
     metrics: dict
     status: str
-
-    class Config:
-        from_attributes = True
 
 
 @router.post("/{model_id}/run", status_code=status.HTTP_202_ACCEPTED)

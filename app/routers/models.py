@@ -91,3 +91,32 @@ async def get_model(
     if model is None:
         raise HTTPException(status_code=404, detail="Model not found.")
     return model
+
+
+@router.get("/{model_id}/validation-runs")
+async def list_validation_runs_for_model(
+    model_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: AuthenticatedUser = Depends(
+        require_role("model_owner", "validator", "mrm_head", "auditor")
+    ),
+):
+    """Every validation run ever started against this model, most recent
+    first. What the UI uses to decide: show a 'Start New Run' button, or
+    an 'Continue Review' button pointing at an already-paused run."""
+    from app.models.orm import ValidationRun
+
+    result = await db.execute(
+        select(ValidationRun)
+        .where(ValidationRun.model_id == model_id)
+        .order_by(ValidationRun.created_at.desc())
+    )
+    return [
+        {
+            "id": str(r.id),
+            "status": r.status,
+            "created_at": r.created_at.isoformat(),
+            "signed_off_at": r.signed_off_at.isoformat() if r.signed_off_at else None,
+        }
+        for r in result.scalars().all()
+    ]

@@ -8,6 +8,13 @@ from app.services.materiality import MaterialityInputs
 
 
 class ModelRegisterRequest(BaseModel):
+    # protected_namespaces=(): "model_type" is legitimate domain
+    # vocabulary in a model-governance tool, not a Pydantic internal.
+    # Same fix as app/core/config.py on Day 1, applied here for the
+    # same reason — silencing this properly rather than accumulating
+    # warning noise across every schema that touches "model_*" fields.
+    model_config = ConfigDict(protected_namespaces=())
+
     name: str = Field(min_length=3, max_length=200)
     description: str = ""
     owner_team: str
@@ -16,7 +23,7 @@ class ModelRegisterRequest(BaseModel):
 
 
 class ModelResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
     id: uuid.UUID
     name: str

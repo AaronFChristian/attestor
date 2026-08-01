@@ -92,10 +92,13 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    if claims.get("azp") != settings.keycloak_client_id:
+    if claims.get("azp") not in settings.keycloak_allowed_azp:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token was not issued for this client (azp mismatch).",
+            detail=(
+                f"Token was not issued for a recognized Attestor client "
+                f"(azp={claims.get('azp')!r} not in {settings.keycloak_allowed_azp})."
+            ),
             headers={"WWW-Authenticate": "Bearer"},
         )
 

@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     keycloak_realm: str = "attestor"
     keycloak_client_id: str = "attestor-api"
     keycloak_audience: str = "attestor-api"
+    # Every client ID whose tokens this API accepts. Both are ours, both
+    # live in our own realm — this isn't "accept any client," it's "accept
+    # any of OUR clients." attestor-api is confidential (Swagger, service
+    # calls); attestor-frontend is public/PKCE (the browser app). A token's
+    # azp identifies which client it was issued to, and until the frontend
+    # existed, only attestor-api was ever a legitimate value here.
+    keycloak_allowed_azp: list[str] = ["attestor-api", "attestor-frontend"]
 
     # --- LLM providers ---
     anthropic_api_key: str = ""

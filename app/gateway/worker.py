@@ -14,6 +14,7 @@ multiple LLM calls and takes minutes. Running that inside an HTTP handler
 means the request times out, the client retries, and you pay for the same
 eval twice. Async + idempotency-keyed is the correct shape.
 """
+import os
 import uuid
 
 from arq import cron
@@ -107,6 +108,16 @@ async def verify_audit_chain_scheduled(ctx: dict) -> dict:
 
 
 async def startup(ctx: dict) -> None:
+    if settings.langsmith_api_key:
+        # Same activation as app/main.py, duplicated deliberately: eval
+        # suites execute in THIS process (the ARQ worker), which never
+        # imports main.py, so main.py's setup never reaches here. Without
+        # this, a LangSmith key configured in .env would trace validation
+        # runs (API process) but silently miss every eval run (worker
+        # process) — a confusing, easy-to-miss gap if left unaddressed.
+        os.environ["LANGSMITH_TRACING"] = "true"
+        os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+        os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
     print("[worker] Attestor worker started.")
 
 

@@ -24,6 +24,16 @@ Two things worth knowing before you edit this file:
 2. claude-sonnet-5 REJECTS the temperature parameter entirely — not
    "ignores it", rejects the request. Passing temperature=0 raises. This is
    handled in _build_anthropic_kwargs; do not "fix" it by adding a default.
+
+3. Both public methods carry @traceable (LangSmith). This is deliberately
+   a no-op when LANGSMITH_TRACING isn't set — confirmed by testing the
+   decorator with no tracing env vars configured before adding it here,
+   so this never becomes a hard dependency on having a LangSmith account.
+   LangGraph's own node execution is traced automatically once the env
+   vars ARE set (standard LangChain-ecosystem behavior) — these decorators
+   exist specifically because the raw Anthropic/Groq SDK calls inside
+   nodes bypass LangChain's instrumented client and wouldn't otherwise
+   show up as nested spans under the graph run.
 """
 import hashlib
 import json
@@ -33,6 +43,7 @@ from typing import Any, Literal
 
 import anthropic
 import groq
+from langsmith import traceable
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import get_settings
@@ -182,6 +193,7 @@ class LLMGateway:
         latency_ms = int((time.perf_counter() - started) * 1000)
         return response, latency_ms
 
+    @traceable(name="llm_gateway_complete", run_type="llm")
     def complete(
         self,
         task_class: TaskClass,
@@ -240,6 +252,7 @@ class LLMGateway:
             raw_content=list(response.content),
         )
 
+    @traceable(name="llm_gateway_complete_secondary_judge", run_type="llm")
     def complete_secondary_judge(
         self, system: str, user: str, max_tokens: int = 1024, temperature: float | None = 0.0
     ) -> LLMResponse:

@@ -35,6 +35,14 @@ USERS = [
 
 
 def generate_password(length: int = 20) -> str:
+    # Alphanumeric only, deliberately. A 20-char alphanumeric password has
+    # ~10^35 possible combinations — plenty of entropy for local dev creds.
+    # Symbols were tried first and dropped: characters like %, &, =, + are
+    # special in shells, URLs, and form-encoded bodies, and a generated
+    # password containing them breaks the moment someone pastes it into a
+    # curl command without --data-urlencode. Optimizing for "copy-pasteable
+    # without surprises" matters more here than squeezing out marginal
+    # extra entropy nobody needs for a local demo credential.
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
 

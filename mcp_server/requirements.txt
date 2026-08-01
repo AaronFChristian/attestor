@@ -1,0 +1,16 @@
+# Deliberately minimal and isolated from the main app's pyproject.toml.
+#
+# fastmcp's dependency tree (Starlette 1.x) conflicts with the main API's
+# pinned FastAPI (which needs Starlette <0.39) — confirmed conflict, not a
+# guess. Rather than force both into one dependency tree (which would mean
+# either freezing fastmcp forever or repeatedly upgrading FastAPI across
+# major versions just to keep an unrelated tool server compatible), this
+# runs as a fully separate service with its own minimal footprint. It only
+# needs enough to query the same Postgres database — nothing web-framework
+# related at all.
+
+fastmcp==3.4.5
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+greenlet==3.1.1
+pydantic-settings==2.5.2

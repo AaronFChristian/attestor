@@ -5,6 +5,10 @@
 *.pem
 *.key
 
+# machine-specific compose overrides (e.g. local port remaps) — not
+# project truth, would mislead anyone else running this repo
+docker-compose.override.yml
+
 # python
 __pycache__/
 *.pyc
@@ -30,4 +34,3 @@ frontend/out/
 # local data volumes if bind-mounted
 data/
 *.db
-docker-compose.override.yml
