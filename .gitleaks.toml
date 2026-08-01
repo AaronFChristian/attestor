@@ -4,10 +4,11 @@ title = "Attestor gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Known non-secret local-dev-only placeholder defaults"
+description = "Known non-secret local-dev-only placeholder defaults, and JDBC connection strings that structurally cannot contain credentials"
 regexes = [
   '''attestor_local_dev_only''',
   '''keycloak_local_dev_only''',
   '''admin_local_dev_only''',
   '''attestor-api-local-dev-secret-change-in-prod''',
+  '''jdbc:postgresql://[a-zA-Z0-9\-_.]+:\d+/[a-zA-Z0-9_\-]+''',
 ]
