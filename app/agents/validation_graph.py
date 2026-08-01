@@ -19,17 +19,23 @@ findings fresh from the database, so whatever the human changed is what
 gets reported. This was proven structurally with stub nodes before being
 built for real.
 
-Checkpointer: MemorySaver, not Postgres-backed. Documented, deliberate
-scope limit — a paused validation run will NOT survive an API process
-restart with this checkpointer. The upgrade path is swapping in
-langgraph-checkpoint-postgres (already compatible with this graph
-structure, zero node changes needed) — not implemented here because it's
-a genuine infrastructure addition (its own migration, connection pool)
-that isn't justified until this is closer to real deployment. Say this
-limitation out loud rather than let someone discover it by restarting the
-API mid-review.
+Checkpointer: Postgres-backed via langgraph-checkpoint-postgres, NOT
+MemorySaver. This matters more than it sounds: MemorySaver keeps paused
+runs in the API process's memory, which means a paused validation run
+literally cannot survive an API restart, and — the more serious problem —
+cannot be seen by a second API replica in any horizontally-scaled
+deployment. A system that can't run more than one instance isn't
+production-shaped, full stop. Postgres-backed checkpointing removes that
+ceiling: any replica can resume any paused run, because the pause state
+lives in the database, not in one process's RAM.
+
+The checkpointer is NOT created here. AsyncPostgresSaver.from_conn_string()
+is an async context manager, not a plain constructor — it needs to stay
+open for the app's entire lifetime, which means it has to be owned by
+FastAPI's lifespan (see app/main.py), opened once at startup, closed once
+at shutdown. build_validation_graph() takes the already-open checkpointer
+as a parameter instead of constructing one itself.
 """
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from app.agents.nodes import (
@@ -134,7 +140,11 @@ async def finalize_report_node(state: ValidationState) -> dict:
     return {"report_evidence_id": str(report_evidence.id)}
 
 
-def build_validation_graph():
+def build_validation_graph(checkpointer):
+    """checkpointer must already be open (i.e. you're inside the
+    `async with AsyncPostgresSaver.from_conn_string(...)` block) — see
+    app/main.py's lifespan handler, which is the only place this should
+    be called from."""
     graph = StateGraph(ValidationState)
 
     graph.add_node("supervisor", supervisor_node)
@@ -164,15 +174,4 @@ def build_validation_graph():
     graph.add_edge("gate_findings", "finalize_report")
     graph.add_edge("finalize_report", END)
 
-    checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer, interrupt_before=["finalize_report"])
-
-
-_compiled_graph = None
-
-
-def get_validation_graph():
-    global _compiled_graph
-    if _compiled_graph is None:
-        _compiled_graph = build_validation_graph()
-    return _compiled_graph

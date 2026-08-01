@@ -19,6 +19,7 @@ from app.core.database import AsyncSessionLocal
 from app.evals.runner import find_cached_run
 from app.gateway.llm import get_gateway
 from app.guardrails.attribution import ProposedFinding, verify_attribution
+from app.guardrails.injection_screen import screen_text
 from app.models.orm import EvalRun, EvidenceRecord, Finding, FindingSeverity
 from app.services import audit, evidence
 from app.services.drift import detect_metric_drift
@@ -96,10 +97,32 @@ async def conceptual_soundness_node(state: ValidationState) -> dict:
             )
             return {"proposed_findings": proposed}
 
+        doc_text = str(doc_evidence.payload)[:4000]
+
+        # Injection screen: doc_text is arbitrary ingested content, and
+        # this is the exact place it reaches an LLM prompt. Flagging
+        # rather than stripping — see module docstring on
+        # app/guardrails/injection_screen.py for why silent stripping is
+        # the wrong call here. A flag doesn't block the call; it makes the
+        # attempt visible in the audit trail regardless of what the model
+        # does with it, and the attribution gate is still the real
+        # backstop against anything that makes it into a Finding.
+        screen_result = screen_text(doc_text)
+        if screen_result.flagged:
+            await audit.record(
+                db,
+                actor="conceptual_soundness_node",
+                action="injection_pattern_flagged_in_ingested_document",
+                resource_type="evidence_record",
+                resource_id=str(doc_evidence.id),
+                detail={"matches": screen_result.matches},
+            )
+            await db.commit()
+
         response = gateway.complete(
             task_class="judgment",
             system=_CONCEPTUAL_SOUNDNESS_PROMPT,
-            user=str(doc_evidence.payload)[:4000],
+            user=doc_text,
         )
 
     import json

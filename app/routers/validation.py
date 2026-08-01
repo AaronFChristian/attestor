@@ -7,19 +7,28 @@ GovernedModel.owner_user_id), and sign-off is restricted to mrm_head, not
 the validator who ran the review — an AI system cannot be the approver of
 record, and neither can the same human wear both hats on one report.
 """
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.validation_graph import get_validation_graph
 from app.core.auth import AuthenticatedUser, require_role
 from app.core.database import get_db
 from app.models.orm import Finding, FindingStatus, GovernedModel, User, ValidationRun
 from app.services import audit
+
+# Hard ceiling on a single graph run. This is the harness-level control
+# that was missing entirely before: without it, a single hung LLM call
+# blocks the HTTP request thread indefinitely — no cost ceiling, no
+# recovery, just a stuck request. 5 minutes is generous for a synchronous
+# tier-1 fan-out (3 parallel LLM calls plus challenge), which normally
+# completes in well under a minute; it's sized to catch genuine hangs, not
+# to be a tight production SLA.
+GRAPH_INVOKE_TIMEOUT_SECONDS = 300
 
 router = APIRouter(prefix="/validation-runs", tags=["validation"])
 
@@ -43,6 +52,7 @@ async def _resolve_local_user(db: AsyncSession, user: AuthenticatedUser) -> User
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def start_validation_run(
     payload: StartValidationRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: AuthenticatedUser = Depends(require_role("validator", "mrm_head")),
 ):
@@ -90,21 +100,42 @@ async def start_validation_run(
     )
     await db.commit()
 
-    graph = get_validation_graph()
+    graph = request.app.state.validation_graph
     config = {"configurable": {"thread_id": thread_id}}
-    await graph.ainvoke(
-        {
-            "model_id": str(model.id),
-            "validation_run_id": str(run.id),
-            "materiality_tier": model.materiality_tier.value,
-            "proposed_findings": [],
-            "challenge_notes": [],
-            "accepted_finding_ids": [],
-            "rejected_count": 0,
-            "report_evidence_id": None,
-        },
-        config=config,
-    )
+    try:
+        await asyncio.wait_for(
+            graph.ainvoke(
+                {
+                    "model_id": str(model.id),
+                    "validation_run_id": str(run.id),
+                    "materiality_tier": model.materiality_tier.value,
+                    "proposed_findings": [],
+                    "challenge_notes": [],
+                    "accepted_finding_ids": [],
+                    "rejected_count": 0,
+                    "report_evidence_id": None,
+                },
+                config=config,
+            ),
+            timeout=GRAPH_INVOKE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        run.status = "running"  # explicitly leave it stuck-but-visible, not silently "awaiting_review"
+        await audit.record(
+            db,
+            actor="system",
+            action="validation_run_timed_out",
+            resource_type="validation_run",
+            resource_id=str(run.id),
+            detail={"timeout_seconds": GRAPH_INVOKE_TIMEOUT_SECONDS},
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Validation run exceeded {GRAPH_INVOKE_TIMEOUT_SECONDS}s and was aborted. "
+            "Check the LLM provider status; this run's findings, if any were persisted "
+            "before the hang, are still in the database.",
+        )
 
     run.status = "awaiting_review"
     await db.commit()
@@ -283,6 +314,7 @@ async def amend_finding(
 @router.post("/{run_id}/finalize")
 async def finalize_validation_run(
     run_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: AuthenticatedUser = Depends(require_role("validator", "mrm_head")),
 ):
@@ -294,9 +326,18 @@ async def finalize_validation_run(
     if run is None:
         raise HTTPException(status_code=404, detail="Validation run not found.")
 
-    graph = get_validation_graph()
+    graph = request.app.state.validation_graph
     config = {"configurable": {"thread_id": run.langgraph_thread_id}}
-    final_state = await graph.ainvoke(None, config=config)
+    try:
+        final_state = await asyncio.wait_for(
+            graph.ainvoke(None, config=config), timeout=GRAPH_INVOKE_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Report finalization exceeded {GRAPH_INVOKE_TIMEOUT_SECONDS}s. "
+            "The run remains paused and can be retried.",
+        )
 
     run.report_evidence_id = uuid.UUID(final_state["report_evidence_id"])
     await db.commit()

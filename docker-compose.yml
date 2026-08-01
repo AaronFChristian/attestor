@@ -125,6 +125,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql+asyncpg://attestor:${POSTGRES_PASSWORD:-attestor_local_dev_only}@postgres:5432/attestor
+      - LANGGRAPH_CHECKPOINTER_DSN=postgresql://attestor:${POSTGRES_PASSWORD:-attestor_local_dev_only}@postgres:5432/attestor
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - MINIO_ENDPOINT=minio:9000

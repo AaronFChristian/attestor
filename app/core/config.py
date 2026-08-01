@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 5
 
+    # LangGraph's checkpoint saver uses psycopg (v3), not asyncpg — a
+    # completely different driver from the rest of this app, which is
+    # SQLAlchemy+asyncpg everywhere else. This means the checkpointer
+    # manages its OWN separate connection pool to the same database,
+    # independent of the main SQLAlchemy engine. That's not a mistake to
+    # "fix" — it's how LangGraph's checkpoint savers work; they're
+    # deliberately decoupled from whatever ORM the app uses. Note the
+    # different URL scheme: no "+asyncpg" suffix, since that's a
+    # SQLAlchemy-specific dialect marker psycopg doesn't understand.
+    langgraph_checkpointer_dsn: str = (
+        "postgresql://attestor:attestor_local_dev_only@localhost:5432/attestor"
+    )
+
     # --- Redis / job queue ---
     redis_url: str = "redis://localhost:6379/0"
 
