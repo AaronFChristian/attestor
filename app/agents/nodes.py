@@ -10,13 +10,11 @@ node proposing a finding and an LLM node persisting a finding should never
 be the same code path, or the attribution gate becomes decorative.
 """
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 from app.agents.state import ProposedFindingDict, ValidationState
 from app.core.database import AsyncSessionLocal
-from app.evals.runner import find_cached_run
 from app.gateway.llm import get_gateway
 from app.guardrails.attribution import ProposedFinding, verify_attribution
 from app.guardrails.injection_screen import screen_text

@@ -1,0 +1,13 @@
+title = "Attestor gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret local-dev-only placeholder defaults"
+regexes = [
+  '''attestor_local_dev_only''',
+  '''keycloak_local_dev_only''',
+  '''admin_local_dev_only''',
+  '''attestor-api-local-dev-secret-change-in-prod''',
+]
